@@ -1,0 +1,16 @@
+**/node_modules
+**/build
+**/.cache
+.git
+.gitignore
+**/*.ipynb
+**/.ipynb_checkpoints
+designs/
+smartmandi_frontend/
+**/.env
+**/.env.*
+!**/.env.example
+# The superseded artifact: not a fitted estimator, never loaded at runtime.
+Model_for_Demand_Forecasting/autos_model.pkl
+Model_for_Demand_Forecasting/demand_forecasting_data.csv
+Model_for_Dynamic_Pricing/dynamic_pricing_data.csv

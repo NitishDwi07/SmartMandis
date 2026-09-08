@@ -9,7 +9,22 @@ const app = express();
 
 // Middleware
 app.use(helmet());
-app.use(cors());
+
+// CORS_ORIGIN is a comma-separated allowlist of front-end origins, e.g.
+// "https://smartmandi.vercel.app,http://localhost:3000". Left unset, every
+// origin is allowed - fine for local development, not for a public deploy.
+const allowedOrigins = (process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map(o => o.trim())
+  .filter(Boolean);
+
+app.use(cors(allowedOrigins.length ? {
+  origin(origin, callback) {
+    // No Origin header: curl, health checks, same-origin requests.
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error(`Origin ${origin} is not allowed by CORS`));
+  }
+} : undefined));
 app.use(morgan('combined'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));

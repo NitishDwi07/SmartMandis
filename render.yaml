@@ -1,0 +1,22 @@
+# Render Blueprint. In the dashboard: New > Blueprint, point it at this repo.
+# Everything here can also be configured by hand as a Docker web service.
+services:
+  - type: web
+    name: smartmandi-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    # Root context: the model .pkl files live outside smartmandi_backend/.
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # Set in the Render dashboard - never commit these.
+      - key: MONGODB_URI      # mongodb+srv://... from MongoDB Atlas
+        sync: false
+      - key: CORS_ORIGIN      # https://<your-app>.vercel.app
+        sync: false
+      - key: NODE_ENV
+        value: production
+      - key: PYTHON_BIN
+        value: /opt/venv/bin/python3
