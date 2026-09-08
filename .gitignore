@@ -5,6 +5,31 @@
 __pycache__/
 *.py[cod]
 
+# Python virtual environments
+venv/
+.venv/
+env/
+
+# Node dependencies and build output
+node_modules/
+build/
+dist/
+*.tsbuildinfo
+
+# Environment files (never commit real secrets; commit .env.example instead)
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Logs and caches
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.cache/
+.eslintcache
+
 # Ignore VS Code settings
 .vscode/
 
