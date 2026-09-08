@@ -1,9 +1,25 @@
 const express = require('express');
-const { Product } = require('../models');
-const { City } = require('../models');
+const mongoose = require('mongoose');
+const { Product, City } = require('../models');
 const productMappingService = require('../services/productMappingService');
+const { handleDbError } = require('../utils/dbGuard');
 
 const router = express.Router();
+
+/**
+ * Match a product by either its business id ("P001") or its Mongo _id.
+ *
+ * _id is only included when the value really is an ObjectId: putting an
+ * arbitrary string there makes Mongoose throw a CastError that fails the entire
+ * $or, so lookups by product_id never worked.
+ */
+function productIdFilter(productId) {
+  const conditions = [{ product_id: productId }];
+  if (mongoose.isValidObjectId(productId)) {
+    conditions.push({ _id: productId });
+  }
+  return { $or: conditions };
+}
 
 // Get all products
 router.get('/', async (req, res) => {
@@ -64,57 +80,7 @@ router.get('/', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching products:', error);
-    
-    // Return mock data if database not available
-    const mockProducts = [
-      {
-        _id: "mockid1",
-        product_id: "P001",
-        product_name: "Milk",
-        category: "Dairy",
-        current_price: 25.50,
-        stock_level: 150,
-        days_left: 3,
-        demand_score: 85,
-        cities: [
-          { city_name: "Mumbai", stock_level: 75, last_updated: new Date() },
-          { city_name: "Delhi", stock_level: 75, last_updated: new Date() }
-        ],
-        is_active: true,
-        created_at: new Date(),
-        updated_at: new Date()
-      },
-      {
-        _id: "mockid2",
-        product_id: "P002",
-        product_name: "Bread",
-        category: "Bakery",
-        current_price: 18.00,
-        stock_level: 200,
-        days_left: 2,
-        demand_score: 78,
-        cities: [
-          { city_name: "Bangalore", stock_level: 100, last_updated: new Date() },
-          { city_name: "Chennai", stock_level: 100, last_updated: new Date() }
-        ],
-        is_active: true,
-        created_at: new Date(),
-        updated_at: new Date()
-      }
-    ];
-
-    res.json({
-      success: true,
-      data: mockProducts,
-      pagination: {
-        current_page: 1,
-        total_pages: 1,
-        total_records: mockProducts.length,
-        limit: parseInt(req.query.limit || 50)
-      },
-      note: 'Mock data - database not available'
-    });
+    return handleDbError(res, error, 'products');
   }
 });
 
@@ -184,20 +150,7 @@ router.get('/meta/categories', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching categories:', error);
-    
-    // Return predefined categories if database not available
-    const defaultCategories = [
-      'Dairy', 'Bakery', 'Health', 'Fruit', 'Meat', 
-      'Beverage', 'Canned', 'Cleaning', 'Frozen', 
-      'Pet', 'Produce', 'Snacks'
-    ];
-
-    res.json({
-      success: true,
-      data: defaultCategories,
-      note: 'Default categories - database not available'
-    });
+    return handleDbError(res, error, 'categories');
   }
 });
 
@@ -212,19 +165,7 @@ router.get('/meta/cities', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching cities:', error);
-    
-    // Return predefined cities if database not available
-    const defaultCities = [
-      'Mumbai', 'Delhi', 'Bangalore', 'Chennai', 
-      'Pune', 'Hyderabad', 'Kolkata', 'Ahmedabad'
-    ];
-
-    res.json({
-      success: true,
-      data: defaultCities,
-      note: 'Default cities - database not available'
-    });
+    return handleDbError(res, error, 'cities');
   }
 });
 
@@ -239,19 +180,7 @@ router.get('/cities', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching cities:', error);
-    
-    // Return predefined cities if database not available
-    const defaultCities = [
-      'Mumbai', 'Delhi', 'Bangalore', 'Chennai', 
-      'Pune', 'Hyderabad', 'Kolkata', 'Ahmedabad'
-    ];
-
-    res.json({
-      success: true,
-      data: defaultCities,
-      note: 'Default cities - database not available'
-    });
+    return handleDbError(res, error, 'cities');
   }
 });
 
@@ -319,41 +248,7 @@ router.get('/category/:category', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching products by category:', error);
-    
-    // Return mock data if database not available
-    const mockProducts = [
-      {
-        _id: "mockid1",
-        product_id: "P001",
-        product_name: "Milk",
-        category: req.params.category,
-        current_price: 25.50,
-        stock_level: 150,
-        days_left: 3,
-        demand_score: 85,
-        cities: [
-          { city_name: "Mumbai", stock_level: 75, last_updated: new Date() },
-          { city_name: "Delhi", stock_level: 75, last_updated: new Date() }
-        ],
-        is_active: true,
-        created_at: new Date(),
-        updated_at: new Date()
-      }
-    ];
-
-    res.json({
-      success: true,
-      data: mockProducts,
-      category: req.params.category,
-      pagination: {
-        current_page: 1,
-        total_pages: 1,
-        total_records: mockProducts.length,
-        limit: parseInt(req.query.limit || 50)
-      },
-      note: 'Mock data - database not available'
-    });
+    return handleDbError(res, error, `products in category ${req.params.category}`);
   }
 });
 
@@ -403,13 +298,8 @@ router.get('/details/:productName', async (req, res) => {
 router.get('/:productId', async (req, res) => {
   try {
     const { productId } = req.params;
-    
-    const product = await Product.findOne({
-      $or: [
-        { _id: productId },
-        { product_id: productId }
-      ]
-    });
+
+    const product = await Product.findOne(productIdFilter(productId));
 
     if (!product) {
       return res.status(404).json({
@@ -424,32 +314,7 @@ router.get('/:productId', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching product:', error);
-    
-    // Return mock data if database not available
-    const mockProduct = {
-      _id: "mockid1",
-      product_id: req.params.productId,
-      product_name: "Mock Product",
-      category: "Dairy",
-      current_price: 25.50,
-      stock_level: 150,
-      days_left: 3,
-      demand_score: 85,
-      cities: [
-        { city_name: "Mumbai", stock_level: 75, last_updated: new Date() },
-        { city_name: "Delhi", stock_level: 75, last_updated: new Date() }
-      ],
-      is_active: true,
-      created_at: new Date(),
-      updated_at: new Date()
-    };
-
-    res.json({
-      success: true,
-      data: mockProduct,
-      note: 'Mock data - database not available'
-    });
+    return handleDbError(res, error, `product ${req.params.productId}`);
   }
 });
 
@@ -515,12 +380,7 @@ router.put('/:productId', async (req, res) => {
     updateData.updated_at = new Date();
 
     const product = await Product.findOneAndUpdate(
-      {
-        $or: [
-          { _id: productId },
-          { product_id: productId }
-        ]
-      },
+      productIdFilter(productId),
       updateData,
       { new: true, runValidators: true }
     );
@@ -561,12 +421,7 @@ router.patch('/:productId/stock/:cityName', async (req, res) => {
       });
     }
 
-    const product = await Product.findOne({
-      $or: [
-        { _id: productId },
-        { product_id: productId }
-      ]
-    });
+    const product = await Product.findOne(productIdFilter(productId));
 
     if (!product) {
       return res.status(404).json({
@@ -616,12 +471,7 @@ router.delete('/:productId', async (req, res) => {
   try {
     const { productId } = req.params;
 
-    const product = await Product.findOneAndDelete({
-      $or: [
-        { _id: productId },
-        { product_id: productId }
-      ]
-    });
+    const product = await Product.findOneAndDelete(productIdFilter(productId));
 
     if (!product) {
       return res.status(404).json({
