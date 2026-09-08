@@ -1,0 +1,143 @@
+/*
+ * SmartMandi design tokens — "Neural Command Center"
+ *
+ * Dark-committed surface. The categorical series colours below are the
+ * validated dark-mode ramp: all eight clear the lightness band, chroma floor,
+ * adjacent CVD separation (worst ΔE 8.4), normal-vision floor (worst ΔE 19.3)
+ * and 3:1 contrast against --surface-1. Do not hand-tune these — re-run the
+ * palette validator against the new surface if the background ever changes.
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* ---- planes ---------------------------------------------------------- */
+  --plane:        #08080f;
+  --surface-1:    #12121c;   /* card / chart surface (validated against) */
+  --surface-2:    #171725;
+  --surface-3:    #1e1e2e;
+
+  /* ---- ink ------------------------------------------------------------- */
+  --ink-primary:   #ffffff;
+  --ink-secondary: #c3c2b7;
+  --ink-muted:     #8b8a9b;
+  --ink-faint:     #5d5c70;
+
+  /* ---- lines ----------------------------------------------------------- */
+  --hairline:      rgba(255, 255, 255, 0.09);
+  --hairline-soft: rgba(255, 255, 255, 0.05);
+  --gridline:      rgba(255, 255, 255, 0.06);
+  --axis:          rgba(255, 255, 255, 0.16);
+
+  /* ---- brand ----------------------------------------------------------- */
+  --accent:        #6f5cf5;
+  --accent-bright: #8f7dff;
+  --accent-dim:    rgba(111, 92, 245, 0.16);
+  --accent-glow:   rgba(111, 92, 245, 0.35);
+
+  /* ---- categorical series (validated dark ramp, fixed order) ----------- */
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --series-6: #008300;
+  --series-7: #9085e9;
+  --series-8: #e66767;
+  --series-other: #6b6a7d;
+
+  /* ---- status (reserved — never reused as a series) -------------------- */
+  --good:     #0ca30c;
+  --warning:  #fab219;
+  --serious:  #ec835a;
+  --critical: #d03b3b;
+
+  /* ---- type ------------------------------------------------------------ */
+  --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace;
+
+  /* ---- geometry -------------------------------------------------------- */
+  --r-sm: 8px;
+  --r-md: 14px;
+  --r-lg: 20px;
+  --r-xl: 28px;
+
+  --shadow-card: 0 1px 2px rgba(0,0,0,.4), 0 8px 32px rgba(0,0,0,.35);
+  --shadow-lift: 0 2px 6px rgba(0,0,0,.45), 0 18px 56px rgba(0,0,0,.5);
+}
+
+/* -------------------------------------------------------------------------
+   Base
+   ---------------------------------------------------------------------- */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body, #root { min-height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--plane);
+  color: var(--ink-primary);
+  font-family: var(--font-ui);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4 { margin: 0; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; }
+p { margin: 0; }
+button { font: inherit; color: inherit; }
+svg { display: block; }
+
+::selection { background: var(--accent-glow); color: #fff; }
+
+/* Scrollbars — subtle, matches the plane */
+* { scrollbar-width: thin; scrollbar-color: var(--surface-3) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--surface-3);
+  border-radius: 99px;
+  border: 3px solid var(--plane);
+}
+*::-webkit-scrollbar-thumb:hover { background: #2a2a3d; }
+
+/* Focus — always visible, never removed */
+:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* -------------------------------------------------------------------------
+   Utilities
+   ---------------------------------------------------------------------- */
+
+.tabular { font-variant-numeric: tabular-nums; }
+
+.eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

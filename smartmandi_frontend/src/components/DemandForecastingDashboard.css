@@ -1,677 +1,79 @@
-/* Dashboard Main Container */
-.dashboard {
-  padding: 20px;
-  background: linear-gradient(135deg, #DFE8FF 100%);
-  min-height: 100vh;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-}
+@import '../styles/page.css';
 
-/* Dashboard Header */
-.dashboard-header {
-  color: #DFE8FF;
-  background-color: #696CFF;
-  padding: 5px 5px;
-  border-radius: 4px;
-  font-size: 2rem;
-}
+/* ---------------------------------------------------------------- day grid */
 
-.dashboard-header h1 {
-  font-size: 2.5rem;
-  font-weight: 700;
-  margin-bottom: 10px;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-}
-
-.dashboard-header p {
-  font-size: 1.2rem;
-  opacity: 0.9;
-  font-weight: 300;
-}
-
-/* Dashboard Stats Section */
-.dashboard-stats {
+.day-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 20px;
-  margin-bottom: 30px;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 11px;
 }
 
-.stat-card {
-  background: white;
-  border-radius: 15px;
-  padding: 25px;
-  display: flex;
-  align-items: center;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-}
-
-.stat-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
-}
-
-.stat-icon {
-  font-size: 2.5rem;
-  margin-right: 20px;
-}
-
-.stat-content {
-  flex: 1;
-}
-
-.stat-value {
-  font-size: 2.5rem;
-  font-weight: 700;
-  color: #333;
-  line-height: 1;
-}
-
-.stat-label {
-  font-size: 1rem;
-  font-weight: 600;
-  color: #666;
-  margin: 5px 0;
-}
-
-.stat-sublabel {
-  font-size: 0.85rem;
-  color: #999;
-}
-
-/* Forecast Controls Section */
-.forecast-controls {
-  background: white;
-  border-radius: 15px;
-  padding: 30px;
-  margin-bottom: 30px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-}
-
-.forecast-controls h2 {
-  color: #333;
-  margin-bottom: 25px;
-  font-size: 1.5rem;
-  font-weight: 600;
-}
-
-.controls-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 20px;
-  align-items: end;
-}
-
-.control-group {
-  display: flex;
-  flex-direction: column;
-  margin-bottom: 15px;
-}
-
-.control-group label {
-  font-weight: 600;
-  color: #555;
-  margin-bottom: 8px;
-  font-size: 0.9rem;
-}
-
-.control-select,
-.control-input,
-.products-select {
-  padding: 8px 12px;
-  border: 2px solid #e1e5e9;
-  border-radius: 8px;
-  font-size: 0.9rem;
-  transition: border-color 0.3s ease, box-shadow 0.3s ease;
-  background: white;
-}
-
-.control-select:focus,
-.control-input:focus,
-.products-select:focus {
-  outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-}
-
-.products-dropdown {
+.day-card {
   position: relative;
+  padding: 14px 15px 12px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--hairline-soft);
+  background: rgba(255, 255, 255, 0.028);
+  transition: border-color .18s ease, background .18s ease, transform .18s cubic-bezier(.22,1,.36,1);
 }
 
-.products-select {
-  min-height: 120px;
-  max-height: 150px;
-  overflow-y: auto;
-}
-
-.products-dropdown small {
-  color: #666;
-  font-size: 0.8rem;
-  margin-top: 5px;
-  display: block;
-}
-
-.generate-btn {
-  background: #1B2559;
-  color: #1B2559;
-  border: none;
-  padding: 15px 25px;
-  border-radius: 8px;
-  font-size: 1rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-  min-height: 50px;
-}
-
-.generate-btn:hover:not(:disabled) {
+.day-card:hover {
+  border-color: var(--hairline);
+  background: rgba(255, 255, 255, 0.055);
   transform: translateY(-2px);
-  box-shadow: #1B2559
 }
 
-.generate-btn:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
-}
-
-.error-message {
-  background: #ffe6e6;
-  color: #d63031;
-  padding: 15px;
-  border-radius: 8px;
-  margin-top: 15px;
-  border-left: 4px solid #d63031;
-}
-
-/* Forecast Results Section */
-.forecast-results {
-  background: white;
-  border-radius: 15px;
-  padding: 30px;
-  margin-bottom: 30px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-}
-
-.forecast-results h2 {
-  color: #333;
-  margin-bottom: 20px;
-  font-size: 1.5rem;
-  font-weight: 600;
-}
-
-.results-summary {
-  margin-bottom: 25px;
-  padding: 15px;
-  background: #f8f9fa;
-  border-radius: 8px;
-  color: #666;
-}
-
-.results-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 20px;
-}
-
-.result-card {
-  background: white;
-  border: 2px solid #f1f3f4;
-  border-radius: 12px;
-  padding: 20px;
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-}
-
-.result-card:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
-  border-color: #667eea;
-}
-
-.result-header {
+.day-card__head {
   display: flex;
+  align-items: baseline;
   justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 20px;
-}
-
-.product-info h3 {
-  font-size: 1.3rem;
-  font-weight: 600;
-  color: #333;
-  margin: 0 0 8px 0;
-}
-
-.category-badge {
-  background: #e3f2fd;
-  color: #1976d2;
-  padding: 4px 12px;
-  border-radius: 20px;
-  font-size: 0.8rem;
-  font-weight: 500;
-}
-
-.confidence-score {
-  background: #e8f5e8;
-  color: #2e7d32;
-  padding: 8px 12px;
-  border-radius: 8px;
-  font-weight: 600;
-  font-size: 0.9rem;
-}
-
-.result-metrics {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 15px;
-  margin-bottom: 20px;
-}
-
-.metric {
-  display: flex;
-  flex-direction: column;
-}
-
-.metric-label {
-  font-size: 0.8rem;
-  color: #666;
-  font-weight: 500;
-  margin-bottom: 5px;
-}
-
-.metric-value {
-  font-size: 1.2rem;
-  font-weight: 600;
-  color: #333;
-}
-
-.recommendation {
-  padding: 15px;
-  border-radius: 8px;
-  text-align: center;
-  font-weight: 600;
-}
-
-.recommendation-buy {
-  background: #e8f5e8;
-  color: #2e7d32;
-  border: 2px solid #4caf50;
-}
-
-.recommendation-sell {
-  background: #fff3e0;
-  color: #ef6c00;
-  border: 2px solid #ff9800;
-}
-
-.recommendation strong {
-  display: block;
-  font-size: 1.1rem;
-  margin-bottom: 5px;
-}
-
-.percentage {
-  font-size: 0.9rem;
-  opacity: 0.8;
-}
-
-/* Forecast Analysis Section */
-.forecast-analysis {
-  background: white;
-  border-radius: 15px;
-  padding: 30px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-}
-
-.forecast-analysis h2 {
-  color: #333;
-  margin-bottom: 25px;
-  font-size: 1.5rem;
-  font-weight: 600;
-}
-
-.analysis-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 20px;
-}
-
-.analysis-card {
-  background: #f8f9fa;
-  border-radius: 12px;
-  padding: 25px;
-  text-align: center;
-  border: 2px solid #e9ecef;
-  transition: transform 0.3s ease;
-}
-
-.analysis-card:hover {
-  transform: translateY(-3px);
-  border-color: #667eea;
-}
-
-.analysis-card h3 {
-  color: #333;
-  margin-bottom: 15px;
-  font-size: 1.1rem;
-  font-weight: 600;
-}
-
-.analysis-value {
-  font-size: 1.8rem;
-  font-weight: 700;
-  color: #667eea;
+  gap: 8px;
   margin-bottom: 10px;
 }
 
-.analysis-detail {
-  color: #666;
-  font-size: 0.9rem;
-}
-
-/* Responsive Design */
-@media (max-width: 768px) {
-  .dashboard {
-    padding: 15px;
-  }
-  
-  .dashboard-header h1 {
-    font-size: 2rem;
-  }
-  
-  .dashboard-stats {
-    grid-template-columns: 1fr;
-  }
-  
-  .controls-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .results-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .analysis-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .result-metrics {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 480px) {
-  .forecast-controls,
-  .forecast-results,
-  .forecast-analysis {
-    padding: 20px;
-  }
-  
-  .stat-card {
-    padding: 20px;
-  }
-  
-  .stat-icon {
-    font-size: 2rem;
-    margin-right: 15px;
-  }
-  
-  .stat-value {
-    font-size: 2rem;
-  }
-}
-
-/* Loading Animation */
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-.generate-btn:disabled::before {
-  content: '';
-  display: inline-block;
-  width: 16px;
-  height: 16px;
-  border: 2px solid #ffffff;
-  border-radius: 50%;
-  border-top-color: transparent;
-  animation: spin 1s ease-in-out infinite;
-  margin-right: 8px;
-}
-
-/* Demand Trends Section */
-.main-content-layout {
-  display: flex;
-  gap: 30px;
-  margin-bottom: 30px;
-}
-
-.graph-section {
-  flex: 0 0 60%;
-  background: white;
-  border-radius: 15px;
-  padding: 30px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-}
-
-.forecast-card-section {
-  flex: 0 0 40%;
-  background: white;
-  border-radius: 15px;
-  padding: 30px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-}
-
-.trends-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-  grid-column: 1 / -1;
-}
-
-.trends-header h2 {
-  color: #333;
-  font-size: 1.5rem;
-  font-weight: 600;
-  margin: 0;
-}
-
-.trends-controls {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-}
-
-.trends-controls span {
-  color: #666;
-  font-weight: 500;
-}
-
-.category-legend {
-  display: flex;
-  gap: 15px;
-  flex-wrap: wrap;
-}
-
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 0.9rem;
-  color: #666;
-}
-
-.legend-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  display: inline-block;
-}
-
-
-/* Generate Forecast Card */
-.generate-forecast-card {
-  background: #f8f9fa;
-  border-radius: 12px;
-  padding: 20px;
-  border: 2px solid #e9ecef;
-  height: fit-content;
-}
-
-.generate-forecast-card h3 {
-  color: #333;
-  font-size: 1.1rem;
-  font-weight: 600;
-  margin-bottom: 15px;
-  text-align: center;
-}
-
-.generate-forecast-card p {
-  color: #666;
-  font-size: 0.85rem;
-  margin-bottom: 8px;
-  font-weight: 500;
-}
-.forecast-period {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 20px;
-}
-
-.forecast-period span {
-  background: #e3f2fd;
-  color: #1976d2;
-  padding: 6px 12px;
-  border-radius: 15px;
-  font-size: 0.8rem;
-  font-weight: 500;
-}
-
-.generate-card-btn {
-  background: linear-gradient(135deg, #5A40FF);
-  color: white;
-  border: none;
-  padding: 12px 20px;
-  border-radius: 8px;
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-  width: 100%;
-  transition: transform 0.3s ease;
-}
-
-.generate-card-btn:hover {
-  transform: translateY(-2px);
-}
-
-/* Custom Scrollbar for Products Select */
-.products-select::-webkit-scrollbar {
-  width: 8px;
-}
-
-.products-select::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 4px;
-}
-
-.products-select::-webkit-scrollbar-thumb {
-  background: #DFE8FF;
-  border-radius: 4px;
-}
-
-.products-select::-webkit-scrollbar-thumb:hover {
-  background: #DFE8FF;
-}
-
-
-
-/* Daily Forecast Cards */
-.daily-forecast-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 15px;
-  margin-top: 20px;
-}
-
-.daily-forecast-card {
-  background: white;
-  border: 2px solid #e9ecef;
-  border-radius: 10px;
-  padding: 15px;
-  transition: transform 0.3s ease, border-color 0.3s ease;
-}
-
-.daily-forecast-card:hover {
-  transform: translateY(-2px);
-  border-color: #DFE8FF;
-}
-
-.forecast-date {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  margin-bottom: 15px;
-}
-
-.forecast-date .date {
-  font-size: 1rem;
-  font-weight: 600;
-  color: #333;
-}
-
-.forecast-date .day {
-  font-size: 0.8rem;
-  color: #666;
+.day-card__dow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
+  color: var(--accent-bright);
 }
 
-.forecast-metrics {
+.day-card__date { font-size: 11.5px; color: var(--ink-faint); }
+
+.day-card__units {
+  font-size: 25px;
+  font-weight: 650;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  color: var(--ink-primary);
+}
+
+.day-card__unitlabel {
+  font-size: 11px;
+  color: var(--ink-faint);
+  margin-top: 2px;
+}
+
+.day-card__foot {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  margin-bottom: 15px;
+  gap: 8px;
+  margin-top: 11px;
+  padding-top: 9px;
+  border-top: 1px solid var(--hairline-soft);
 }
 
-.daily-recommendation {
-  text-align: center;
-  padding: 8px;
-  border-radius: 6px;
-  font-size: 0.9rem;
-  font-weight: 600;
+.day-card__conf { font-size: 11px; color: var(--ink-faint); }
+
+.day-card__flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 650;
 }
 
-.daily-recommendation.recommendation-buy {
-  background: #e8f5e8;
-  color: #2e7d32;
-}
-
-.daily-recommendation.recommendation-sell {
-  background: #fff3e0;
-  color: #ef6c00;
-}
-
-/* Responsive adjustments for main content layout */
-@media (max-width: 1024px) {
-  .main-content-layout {
-    flex-direction: column;
-  }
-  
-  .graph-section,
-  .forecast-card-section {
-    flex: 1 1 100%;
-  }
-  
-  .graph-container {
-    height: 300px;
-  }
-  
-  .forecast-summary-metrics {
-    grid-template-columns: 1fr;
-  }
-  
-  .daily-forecast-grid {
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  }
-}
-
-  
-
+.day-card__flag.is-short { color: var(--critical); }
+.day-card__flag.is-ok    { color: var(--good); }
