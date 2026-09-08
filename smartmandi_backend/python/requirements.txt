@@ -1,0 +1,17 @@
+# Python dependencies for python/modelService.py.
+#
+#   python -m venv .venv
+#   .venv/Scripts/activate        (Windows)  |  source .venv/bin/activate  (Unix)
+#   pip install -r smartmandi_backend/python/requirements.txt
+#
+# Then point the API at that interpreter via PYTHON_BIN in .env.
+#
+# Versions are lower-bounded at what this code was verified against. xgboost is
+# required to unpickle Model_for_Dynamic_Pricing/xgb_model.pkl; scikit-learn and
+# scipy are transitive requirements of that pickle.
+
+numpy>=2.2.6
+pandas>=2.3.3
+xgboost>=2.0.3
+scikit-learn>=1.7.2
+scipy>=1.15.3

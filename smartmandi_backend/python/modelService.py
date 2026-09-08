@@ -1,394 +1,448 @@
 #!/usr/bin/env python3
 """
 Model Service for Smart Mandi Backend
-Handles demand forecasting and dynamic pricing predictions
+Handles demand forecasting and dynamic pricing predictions.
+
+Protocol: invoked as `modelService.py <operation>` with a JSON payload on stdin.
+Exactly one line is written to stdout -- the JSON result. Every diagnostic goes
+to stderr, because the Node caller parses stdout as the response.
 """
 
-import pandas as pd
-import numpy as np
-import pickle
 import json
-import sys
 import os
+import pickle
+import sys
 from datetime import datetime, timedelta
 import warnings
+
+import numpy as np
+
 warnings.filterwarnings('ignore')
 
+
+def log(message):
+    """Diagnostics go to stderr; stdout is reserved for the JSON result."""
+    print(message, file=sys.stderr)
+    sys.stderr.flush()
+
+
 class SmartMandiModelService:
+    DEMAND_METHOD = 'xgboost'
+    DEMAND_VERSION = 'xgboost-demand-1.0'
+    PRICING_VERSION = 'xgboost-1.0'
+
+    # Indian public holidays present in the training data. The model has an
+    # is_holiday feature, so serving has to be able to set it.
+    HOLIDAYS_2024 = {
+        '2024-08-15': 'Independence Day',
+        '2024-10-02': 'Gandhi Jayanti',
+        '2024-10-12': 'Dussehra',
+        '2024-11-01': 'Diwali',
+        '2024-11-03': 'Bhai Dooj',
+    }
+    # Month-day recurrence for the fixed-date holidays, so a 2026 request still
+    # flags Independence Day / Gandhi Jayanti.
+    FIXED_HOLIDAYS = {(8, 15), (10, 2)}
+
     def __init__(self):
         self.base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        self.demand_model = None
+        self.project_root = os.path.dirname(self.base_path)
         self.pricing_model = None
         self.model_features = None
-        self.load_models()
-    
-    def load_models(self):
-        """Load the trained models and features"""
+        self.demand_model = None
+        self.demand_features = None
+        self.demand_metrics = None
+        self.demand_quantiles = None
+
+    # ------------------------------------------------------------------
+    # Model loading
+    # ------------------------------------------------------------------
+    # Loaded lazily and only for the operation being run. Each request spawns a
+    # fresh interpreter, so eagerly unpickling every artifact in __init__ meant
+    # demand requests paid to read a 5.3 MB file they never touched.
+
+    def load_pricing_model(self):
+        """Load the XGBoost pricing model and its feature order."""
+        if self.pricing_model is not None:
+            return
+
+        model_path = os.path.join(self.project_root, 'Model_for_Dynamic_Pricing', 'xgb_model.pkl')
+        with open(model_path, 'rb') as f:
+            self.pricing_model = pickle.load(f)
+
+        # The feature order is part of the trained model's contract. If it is
+        # missing we cannot build a valid input vector, so fail loudly rather
+        # than guess -- a wrong order yields confident, silently wrong prices.
+        features_path = os.path.join(self.project_root, 'Model_for_Dynamic_Pricing', 'model_features.json')
         try:
-            # Get the project root directory (parent of smartmandi_backend)
-            project_root = os.path.dirname(self.base_path)
-            
-            # Load demand forecasting model
-            demand_model_path = os.path.join(project_root, 'Model_for_Demand_Forecasting', 'autos_model.pkl')
-            with open(demand_model_path, 'rb') as f:
-                self.demand_model = pickle.load(f)
-            
-            # Load pricing model
-            pricing_model_path = os.path.join(project_root, 'Model_for_Dynamic_Pricing', 'xgb_model.pkl')
-            with open(pricing_model_path, 'rb') as f:
-                self.pricing_model = pickle.load(f)
-            
-            # Load model features (create if doesn't exist)
-            features_path = os.path.join(project_root, 'Model_for_Dynamic_Pricing', 'model_features.json')
-            try:
-                with open(features_path, 'r') as f:
-                    self.model_features = json.load(f)
-            except FileNotFoundError:
-                # Create default features if file doesn't exist
-                self.model_features = {
-                    "features": [
-                        "days_left", "stock_level", "demand_score",
-                        "category_encoded", "season_encoded", "weekday_encoded"
-                    ]
-                }
-                print("Model features file not found, using default features")
-                
-            print("Models loaded successfully")
-            
-        except Exception as e:
-            print(f"Error loading models: {str(e)}")
-            raise e
-    
+            with open(features_path, 'r') as f:
+                self.model_features = json.load(f)
+        except FileNotFoundError:
+            raise RuntimeError(
+                f'Required feature spec not found at {features_path}. '
+                'It defines the exact input order xgb_model.pkl was trained on.'
+            )
+
+        log(f'Pricing model loaded ({len(self.model_features)} features)')
+
+    def load_demand_model(self):
+        """Load the trained demand regressor, its feature order and its scores."""
+        if self.demand_model is not None:
+            return
+
+        base = os.path.join(self.project_root, 'Model_for_Demand_Forecasting')
+        model_path = os.path.join(base, 'demand_model.pkl')
+        features_path = os.path.join(base, 'demand_model_features.json')
+
+        if not os.path.exists(model_path):
+            raise RuntimeError(
+                f'Demand model not found at {model_path}. '
+                'Run: python Model_for_Demand_Forecasting/train_demand_model.py'
+            )
+
+        with open(model_path, 'rb') as f:
+            self.demand_model = pickle.load(f)
+        with open(features_path, 'r') as f:
+            self.demand_features = json.load(f)
+
+        # Optional: separate quantile fits giving each prediction a real
+        # interval. Absent, rows simply carry no bounds — better than
+        # substituting an invented confidence number.
+        try:
+            with open(os.path.join(base, 'demand_model_quantiles.pkl'), 'rb') as f:
+                self.demand_quantiles = pickle.load(f)
+        except FileNotFoundError:
+            self.demand_quantiles = None
+
+        # Held-out scores travel with every response so callers can see how much
+        # to trust the number instead of assuming "it is a model, so it is right".
+        try:
+            with open(os.path.join(base, 'demand_model_metrics.json'), 'r') as f:
+                self.demand_metrics = json.load(f)
+        except FileNotFoundError:
+            self.demand_metrics = None
+
+        log(f'Demand model loaded ({len(self.demand_features)} features)')
+
+    # ------------------------------------------------------------------
+    # Demand forecasting
+    # ------------------------------------------------------------------
+
     def predict_demand(self, input_data):
         """
-        Predict demand for given products
-        
-        Args:
-            input_data: Dict containing prediction parameters
-                - products: List of product data
-                - forecast_days: Number of days to forecast
-                - cities: List of cities
-        
-        Returns:
-            Dict containing predictions
+        Forecast demand for each product / city / day using the trained model.
+
+        Uses Model_for_Demand_Forecasting/demand_model.pkl -- an XGBRegressor
+        fitted on the 17,019 historical sales rows with a chronological split
+        (see train_demand_model.py). Its held-out scores ride along in the
+        response: on this dataset the achievable ceiling is low, because
+        product, city and category each explain well under 1% of the variance
+        and the series carry no autocorrelation. Weekday (7.3%) and holiday
+        (0.9%) are the only real effects, so the honest read is "a weekday and
+        holiday shape", not a per-SKU crystal ball.
         """
         try:
-            results = []
-            
-            # Get parameters
+            self.load_demand_model()
+
             products = input_data.get('products', [])
-            forecast_days = input_data.get('forecast_days', 7)
-            cities = input_data.get('cities', ['Mumbai', 'Delhi', 'Bangalore', 'Chennai', 'Pune'])
-            
-            # Generate predictions for each product and city combination
+            forecast_days = int(input_data.get('forecast_days', 7))
+            cities = input_data.get('cities') or ['Mumbai', 'Delhi', 'Bangalore', 'Chennai', 'Pune']
+
+            rows = []
+            meta = []
+            today = datetime.now()
+
             for product in products:
                 for city in cities:
                     for day in range(forecast_days):
-                        forecast_date = datetime.now() + timedelta(days=day + 1)
-                        
-                        # Make prediction using rule-based approach
-                        # (as fallback when model doesn't have predict method)
-                        prediction = self.generate_demand_prediction(product, city, forecast_date)
-                        
-                        result = {
-                            'product_id': product.get('product_id'),
-                            'product_name': product.get('product_name'),
-                            'category': product.get('category'),
-                            'city': city,
-                            'forecast_date': forecast_date.strftime('%Y-%m-%d'),
-                            'predicted_units': prediction,
-                            'confidence_score': 0.85,  # Mock confidence score
-                            'day_of_week': forecast_date.strftime('%A'),
-                            'month': forecast_date.month,
-                            'year': forecast_date.year,
-                            'holiday_flag': self.is_holiday(forecast_date)
-                        }
-                        results.append(result)
-            
-            return {
+                        forecast_date = today + timedelta(days=day + 1)
+                        rows.append(self.prepare_demand_features(product, city, forecast_date))
+                        meta.append((product, city, forecast_date))
+
+            if not rows:
+                return {
+                    'success': True, 'predictions': [], 'total_predictions': 0,
+                    'method': self.DEMAND_METHOD, 'is_trained_model': True
+                }
+
+            # One batched call rather than one per row.
+            matrix = np.asarray(rows, dtype=float)
+            raw = self.demand_model.predict(matrix)
+
+            lower = upper = None
+            if self.demand_quantiles:
+                keys = sorted(self.demand_quantiles, key=float)
+                lower = np.clip(self.demand_quantiles[keys[0]].predict(matrix), 0, None)
+                upper = np.clip(self.demand_quantiles[keys[-1]].predict(matrix), 0, None)
+
+            results = []
+            for i, ((product, city, forecast_date), value) in enumerate(zip(meta, raw)):
+                bounds = {}
+                if lower is not None:
+                    lo = int(max(0, round(float(lower[i]))))
+                    hi = int(max(0, round(float(upper[i]))))
+                    # Quantile fits are independent, so they can cross on rare
+                    # rows; order them rather than emit a negative-width range.
+                    bounds = {'lower_bound': min(lo, hi), 'upper_bound': max(lo, hi)}
+
+                results.append({
+                    **bounds,
+                    'product_id': product.get('product_id'),
+                    'product_name': product.get('product_name'),
+                    'category': product.get('category'),
+                    'city': city,
+                    'forecast_date': forecast_date.strftime('%Y-%m-%d'),
+                    'predicted_units': int(max(0, round(float(value)))),
+                    # A point-estimate regressor emits no interval, so there is
+                    # no per-row confidence to report. Accuracy is reported once,
+                    # for the model, in `model_performance` below.
+                    'confidence_score': None,
+                    'day_of_week': forecast_date.strftime('%A'),
+                    'month': forecast_date.month,
+                    'year': forecast_date.year,
+                    'holiday_flag': self.is_holiday(forecast_date),
+                    'model_version': self.DEMAND_VERSION,
+                })
+
+            response = {
                 'success': True,
                 'predictions': results,
                 'total_predictions': len(results),
-                'forecast_period': f"{forecast_days} days"
+                'forecast_period': f'{forecast_days} days',
+                'method': self.DEMAND_METHOD,
+                'is_trained_model': True,
             }
-            
+
+            if self.demand_metrics:
+                m = self.demand_metrics.get('model', {})
+                interval = self.demand_metrics.get('interval', {})
+                response['model_performance'] = {
+                    'mae': m.get('mae'),
+                    'rmse': m.get('rmse'),
+                    'r2': m.get('r2'),
+                    'holdout_days': self.demand_metrics.get('holdout_days'),
+                    'trained_rows': self.demand_metrics.get('rows_train'),
+                    'interval_coverage_pct': interval.get('empirical_coverage_pct'),
+                    'interval_nominal_pct': interval.get('nominal_coverage_pct'),
+                    'note': (
+                        f"Held-out MAE {m.get('mae')} units (R² {m.get('r2')}). The source data "
+                        'has little learnable structure beyond weekday and holiday effects, so '
+                        'treat these as a demand shape rather than precise per-SKU figures.'
+                    )
+                }
+
+            return response
+
         except Exception as e:
-            return {
-                'success': False,
-                'error': str(e),
-                'predictions': []
-            }
-    
+            return {'success': False, 'error': str(e), 'predictions': []}
+
+    def prepare_demand_features(self, product, city, forecast_date):
+        """
+        Build the demand feature vector in the exact order the model was fitted
+        on, driven by demand_model_features.json so training and serving cannot
+        drift apart.
+        """
+        numeric = {
+            'day_of_week': forecast_date.weekday(),
+            'day_of_month': forecast_date.day,
+            'month': forecast_date.month,
+            'week_of_year': forecast_date.isocalendar()[1],
+            'is_weekend': 1 if forecast_date.weekday() >= 5 else 0,
+            'is_holiday': 1 if self.is_holiday(forecast_date) else 0,
+        }
+        one_hot = {
+            'product_': product.get('product_id'),
+            'category_': product.get('category'),
+            'city_': city,
+        }
+
+        vector = []
+        for name in self.demand_features:
+            if name in numeric:
+                vector.append(float(numeric[name]))
+                continue
+
+            for prefix, value in one_hot.items():
+                if name.startswith(prefix):
+                    vector.append(1.0 if name[len(prefix):] == value else 0.0)
+                    break
+            else:
+                raise ValueError(f'Unrecognised feature in demand_model_features.json: {name}')
+
+        return vector
+
+    def is_holiday(self, date):
+        """
+        True on the public holidays the model was trained with.
+
+        The training data covers Jun-Nov 2024, so the movable festivals are
+        matched on their exact 2024 dates and the fixed-date national holidays
+        recur every year.
+        """
+        if date.strftime('%Y-%m-%d') in self.HOLIDAYS_2024:
+            return True
+        return (date.month, date.day) in self.FIXED_HOLIDAYS
+
+    # ------------------------------------------------------------------
+    # Dynamic pricing
+    # ------------------------------------------------------------------
+
     def predict_pricing(self, input_data):
-        """
-        Predict optimal pricing for given products
-        
-        Args:
-            input_data: Dict containing product data
-        
-        Returns:
-            Dict containing price recommendations
-        """
+        """Predict optimal pricing for the given products using the XGBoost model."""
         try:
+            self.load_pricing_model()
+
             results = []
-            products = input_data.get('products', [])
-            
-            for product in products:
-                # Prepare features for pricing model
+            for product in input_data.get('products', []):
                 features = self.prepare_pricing_features(product)
-                
-                # Make prediction
-                predicted_price = self.pricing_model.predict([features])[0]
-                
-                # Ensure price is positive and convert to Python float
-                predicted_price = float(max(0, predicted_price))
-                
+                predicted_price = float(max(0.0, self.pricing_model.predict([features])[0]))
+
                 current_price = float(product.get('current_price', 25.0))
-                demand_score = int(product.get('demand_score', 50))
-                stock_level = int(product.get('stock_level', 100))
-                days_left = int(product.get('days_left', 7))
-                
-                price_change = ((predicted_price - current_price) / current_price * 100) if current_price > 0 else 0
-                
-                # Generate recommendation reason
-                reason = self.get_pricing_reason(product, predicted_price, current_price)
-                
-                result = {
+                price_change = (
+                    ((predicted_price - current_price) / current_price * 100)
+                    if current_price > 0 else 0.0
+                )
+
+                results.append({
                     'product_id': product.get('product_id'),
                     'product_name': product.get('product_name'),
                     'category': product.get('category'),
                     'current_price': current_price,
                     'recommended_price': round(predicted_price, 2),
                     'price_change_percentage': round(price_change, 2),
-                    'demand_score': demand_score,
-                    'stock_level': stock_level,
-                    'days_left': days_left,
+                    'demand_score': int(product.get('demand_score', 50)),
+                    'stock_level': int(product.get('stock_level', 100)),
+                    'days_left': int(product.get('days_left', 7)),
                     'weekday': product.get('weekday', datetime.now().strftime('%A')),
                     'season': product.get('season', 'Summer'),
-                    'confidence_score': 0.82,  # Mock confidence score
-                    'recommendation_reason': reason,
-                    'valid_until': (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d %H:%M:%S')
-                }
-                results.append(result)
-            
+                    # The regressor emits a point estimate with no interval, so
+                    # there is no confidence to report.
+                    'confidence_score': None,
+                    'recommendation_reason': self.get_pricing_reason(
+                        product, predicted_price, current_price
+                    ),
+                    'model_version': self.PRICING_VERSION,
+                    'valid_until': (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d %H:%M:%S'),
+                })
+
             return {
                 'success': True,
                 'recommendations': results,
-                'total_recommendations': len(results)
+                'total_recommendations': len(results),
+                'method': 'xgboost',
+                'is_trained_model': True,
             }
-            
+
         except Exception as e:
-            return {
-                'success': False,
-                'error': str(e),
-                'recommendations': []
-            }
-    
-    def prepare_demand_features(self, product, city, forecast_date):
-        """Prepare features for demand forecasting model"""
-        # Mock feature preparation - replace with actual feature engineering
-        features = [
-            forecast_date.day,
-            forecast_date.month,
-            forecast_date.year,
-            forecast_date.weekday(),
-            1 if self.is_holiday(forecast_date) else 0,
-            hash(product.get('category', '')) % 100,
-            hash(city) % 100,
-            hash(product.get('product_id', '')) % 100
-        ]
-        return features
-    
+            return {'success': False, 'error': str(e), 'recommendations': []}
+
     def prepare_pricing_features(self, product):
-        """Prepare features for pricing model"""
-        # Create feature vector based on model_features.json
-        feature_vector = []
-        
-        # Base features
-        feature_vector.extend([
-            product.get('days_left', 7),
-            product.get('stock_level', 100),
-            product.get('demand_score', 50)
-        ])
-        
-        # Category one-hot encoding
-        categories = ['Bakery', 'Beverage', 'Canned', 'Cleaning', 'Dairy', 
-                     'Frozen', 'Fruit', 'Health', 'Meat', 'Pet', 'Produce', 'Snacks']
-        current_category = product.get('category', 'Dairy')
-        for cat in categories:
-            feature_vector.append(1 if current_category == cat else 0)
-        
-        # Season one-hot encoding
-        seasons = ['Summer', 'Winter']
-        current_season = product.get('season', 'Summer')
-        for season in seasons:
-            feature_vector.append(1 if current_season == season else 0)
-        
-        # Weekday one-hot encoding
-        weekdays = ['Monday', 'Saturday', 'Sunday', 'Thursday', 'Tuesday', 'Wednesday']
-        current_weekday = product.get('weekday', 'Monday')
-        for weekday in weekdays:
-            feature_vector.append(1 if current_weekday == weekday else 0)
-        
-        return feature_vector
-    
-    def generate_demand_prediction(self, product, city, forecast_date):
-        """Generate demand prediction using rule-based approach"""
-        # Base demand based on category
-        category_base = {
-            'Dairy': 150,
-            'Bakery': 120,
-            'Fruit': 100,
-            'Vegetable': 180,
-            'Meat': 80,
-            'Snacks': 90,
-            'Beverage': 110
+        """
+        Build the feature vector in the exact order model_features.json declares.
+
+        Derived from the spec rather than hardcoded lists, so retraining with new
+        categories only requires regenerating that file. Note the spec omits
+        weekday_Friday (dropped as the encoding baseline), so a Friday correctly
+        produces all-zero weekday columns.
+        """
+        numeric = {
+            'days_left': product.get('days_left', 7),
+            'stock': product.get('stock_level', 100),
+            'demand_score': product.get('demand_score', 50),
         }
-        
-        base_demand = category_base.get(product.get('category', 'Dairy'), 100)
-        
-        # City factor
-        city_factors = {
-            'Mumbai': 1.3,
-            'Delhi': 1.2,
-            'Bangalore': 1.1,
-            'Chennai': 1.0,
-            'Pune': 0.9
+        one_hot = {
+            'category_': product.get('category', 'Dairy'),
+            'season_': product.get('season', 'Summer'),
+            'weekday_': product.get('weekday', 'Monday'),
         }
-        city_factor = city_factors.get(city, 1.0)
-        
-        # Day of week factor
-        weekday = forecast_date.weekday()
-        weekday_factor = 1.2 if weekday in [4, 5, 6] else 1.0  # Weekend boost
-        
-        # Month seasonality
-        month = forecast_date.month
-        if month in [12, 1, 2]:  # Winter
-            season_factor = 1.1
-        elif month in [4, 5]:  # Summer
-            season_factor = 0.9
-        else:
-            season_factor = 1.0
-        
-        # Add some randomness for realism
-        import random
-        random_factor = 0.8 + random.random() * 0.4  # 0.8 to 1.2
-        
-        prediction = int(base_demand * city_factor * weekday_factor * season_factor * random_factor)
-        return max(50, prediction)  # Minimum 50 units
-    
-    def is_holiday(self, date):
-        """Check if date is a holiday (simplified)"""
-        # Add your holiday logic here
-        return False
-    
+
+        vector = []
+        for name in self.model_features:
+            if name in numeric:
+                vector.append(float(numeric[name]))
+                continue
+
+            for prefix, value in one_hot.items():
+                if name.startswith(prefix):
+                    vector.append(1.0 if name[len(prefix):] == value else 0.0)
+                    break
+            else:
+                raise ValueError(f'Unrecognised feature in model_features.json: {name}')
+
+        return vector
+
     def get_pricing_reason(self, product, predicted_price, current_price):
-        """Generate reasoning for price recommendation"""
+        """Generate reasoning for a price recommendation."""
         if predicted_price > current_price:
             if product.get('demand_score', 50) > 70:
-                return "High demand detected - price increase recommended"
-            elif product.get('stock_level', 100) < 50:
-                return "Low stock levels - price increase to manage demand"
-            else:
-                return "Market conditions favor price increase"
-        elif predicted_price < current_price:
+                return 'High demand detected - price increase recommended'
+            if product.get('stock_level', 100) < 50:
+                return 'Low stock levels - price increase to manage demand'
+            return 'Market conditions favor price increase'
+
+        if predicted_price < current_price:
             if product.get('days_left', 7) <= 2:
-                return "Product nearing expiry - price reduction to clear stock"
-            elif product.get('stock_level', 100) > 200:
-                return "High inventory levels - price reduction to boost sales"
-            else:
-                return "Market conditions favor price reduction"
-        else:
-            return "Current price is optimal"
+                return 'Product nearing expiry - price reduction to clear stock'
+            if product.get('stock_level', 100) > 200:
+                return 'High inventory levels - price reduction to boost sales'
+            return 'Market conditions favor price reduction'
+
+        return 'Current price is optimal'
+
+
+OPERATIONS = {
+    'predict_demand': 'predict_demand',
+    'predict_pricing': 'predict_pricing',
+}
+
+
+def read_input():
+    """Read the JSON payload from stdin."""
+    raw = sys.stdin.read().strip()
+    if not raw:
+        raise ValueError('No input data provided on stdin')
+    return json.loads(raw)
+
+
+def emit(payload):
+    """Write the single JSON response line to stdout."""
+    print(json.dumps(payload))
+    sys.stdout.flush()
+
 
 def main():
-    """Main function to handle command line arguments"""
+    """
+    Always exits 0 once a well-formed JSON response has been written: the caller
+    reads the `success` field to determine the outcome. A non-zero exit means the
+    process died without producing a parseable response.
+    """
     try:
-        # Flush stdout and stderr immediately
-        sys.stdout.flush()
-        sys.stderr.flush()
-        
         if len(sys.argv) < 2:
-            print(json.dumps({"error": "No operation specified"}))
-            sys.stdout.flush()
-            return
-        
-        operation = sys.argv[1]
-        print(f"Starting operation: {operation}", file=sys.stderr)
-        sys.stderr.flush()
-        
-        service = SmartMandiModelService()
-        print("Service initialized successfully", file=sys.stderr)
-        sys.stderr.flush()
-        
-        # Try to get input data from stdin first, then from command line args
-        input_data = {}
-        
-        if not sys.stdin.isatty():
-            # Read from stdin
-            print("Reading from stdin", file=sys.stderr)
-            stdin_data = sys.stdin.read().strip()
-            if stdin_data:
-                try:
-                    input_data = json.loads(stdin_data)
-                    print(f"Parsed stdin data: {len(str(input_data))} chars", file=sys.stderr)
-                except json.JSONDecodeError as e:
-                    error_result = {"error": "JSON decode error from stdin", "message": str(e), "raw_data": stdin_data[:200]}
-                    print(json.dumps(error_result))
-                    sys.stdout.flush()
-                    return
-        elif len(sys.argv) > 2:
-            # Read from command line argument
-            print("Reading from command line argument", file=sys.stderr)
-            try:
-                # Handle potential quote issues in Windows
-                arg_data = sys.argv[2]
-                print(f"Raw argument: {arg_data[:100]}", file=sys.stderr)
-                
-                # Try to clean up the JSON string
-                if arg_data.startswith('"') and arg_data.endswith('"'):
-                    arg_data = arg_data[1:-1]
-                
-                input_data = json.loads(arg_data)
-                print(f"Parsed argument data: {len(str(input_data))} chars", file=sys.stderr)
-            except json.JSONDecodeError as e:
-                error_result = {"error": "JSON decode error from argument", "message": str(e), "raw_data": sys.argv[2][:200] if len(sys.argv) > 2 else ""}
-                print(json.dumps(error_result))
-                sys.stdout.flush()
-                return
-        else:
-            error_result = {"error": "No input data provided"}
-            print(json.dumps(error_result))
-            sys.stdout.flush()
-            return
-        
-        sys.stderr.flush()
-        
-        if operation == "predict_demand":
-            print("Executing demand prediction", file=sys.stderr)
-            sys.stderr.flush()
-            result = service.predict_demand(input_data)
-            print(json.dumps(result))
-            sys.stdout.flush()
-            
-        elif operation == "predict_pricing":
-            print("Executing pricing prediction", file=sys.stderr)
-            sys.stderr.flush()
-            result = service.predict_pricing(input_data)
-            print(json.dumps(result))
-            sys.stdout.flush()
-            
-        else:
-            error_result = {"error": f"Unknown operation: {operation}"}
-            print(json.dumps(error_result))
-            sys.stdout.flush()
-            
-    except Exception as e:
-        error_result = {"error": str(e), "type": type(e).__name__}
-        print(json.dumps(error_result))
-        sys.stdout.flush()
-        print(f"Exception occurred: {str(e)}", file=sys.stderr)
-        sys.stderr.flush()
+            emit({'success': False, 'error': 'No operation specified'})
+            return 0
 
-if __name__ == "__main__":
-    main()
+        operation = sys.argv[1]
+        if operation not in OPERATIONS:
+            emit({'success': False, 'error': f'Unknown operation: {operation}'})
+            return 0
+
+        log(f'Starting operation: {operation}')
+
+        try:
+            input_data = read_input()
+        except (ValueError, json.JSONDecodeError) as e:
+            emit({'success': False, 'error': 'Invalid input', 'message': str(e)})
+            return 0
+
+        service = SmartMandiModelService()
+        emit(getattr(service, OPERATIONS[operation])(input_data))
+        return 0
+
+    except Exception as e:
+        log(f'Unhandled exception: {e}')
+        emit({'success': False, 'error': str(e), 'type': type(e).__name__})
+        return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

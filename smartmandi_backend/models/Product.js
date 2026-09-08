@@ -12,10 +12,14 @@ module.exports = (mongoose) => {
       type: String,
       required: true
     },
+    // 'Baby' (P026 Baby Formula) appears in both source CSVs but was missing
+    // here, so that product could not be written through this model. Note the
+    // pricing model has no category_Baby feature, so it scores Baby products
+    // with all-zero category columns until it is retrained.
     category: {
       type: String,
       required: true,
-      enum: ['Dairy', 'Bakery', 'Health', 'Fruit', 'Meat', 'Beverage', 'Canned', 'Cleaning', 'Frozen', 'Pet', 'Produce', 'Snacks']
+      enum: ['Dairy', 'Bakery', 'Health', 'Fruit', 'Meat', 'Beverage', 'Canned', 'Cleaning', 'Frozen', 'Pet', 'Produce', 'Snacks', 'Baby']
     },
     current_price: {
       type: Number,

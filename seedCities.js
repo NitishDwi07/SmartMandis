@@ -2,9 +2,10 @@ const { MongoClient } = require('mongodb');
 const fs = require('fs');
 const path = require('path');
 const csv = require('csv-parser');
+require('dotenv').config({ path: './smartmandi_backend/.env' });
 
-const uri = 'mongodb://127.0.0.1:27017';
-const dbName = 'smartMandi';
+const uri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/smartMandi';
+const dbName = 'smartmandi'; // Assuming the db name is smartmandi
 const csvPath = path.join(__dirname, 'Dataset_CSV_Files/demand_forecasting_data.csv');
 
 const citySet = new Set();
