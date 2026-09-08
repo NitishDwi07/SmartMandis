@@ -31,11 +31,13 @@ const demandForecastSchema = new mongoose.Schema({
     min: 0,
     default: null
   },
+  // null means "no calibrated confidence available" rather than a made-up
+  // number. The current demand baseline is rule-based and emits no interval.
   confidence_score: {
     type: Number,
     min: 0,
     max: 1,
-    default: 0.5
+    default: null
   },
   holiday_flag: {
     type: Boolean,

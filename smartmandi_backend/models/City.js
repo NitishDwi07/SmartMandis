@@ -13,4 +13,5 @@ const citySchema = new mongoose.Schema({
   },
 });
 
-module.exports = mongoose.model('City', citiesSchema);
+// Guard against OverwriteModelError when this module is required more than once.
+module.exports = mongoose.models.City || mongoose.model('City', citySchema);

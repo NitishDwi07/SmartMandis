@@ -54,11 +54,14 @@ module.exports = (mongoose) => {
       required: true,
       enum: ['Spring', 'Summer', 'Autumn', 'Winter', 'Rainy']
     },
+    // null means "no calibrated confidence available" rather than a made-up
+    // number. Averages over this field skip nulls, which is the correct
+    // behaviour when the model does not emit an interval.
     confidence_score: {
       type: Number,
       min: 0,
       max: 1,
-      default: 0.5
+      default: null
     },
     recommendation_reason: {
       type: String,
